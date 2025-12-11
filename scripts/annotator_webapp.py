@@ -1,9 +1,9 @@
 import gradio as gr
 import argparse
 import os
+import json
 import numpy as np
 from PIL import Image, ImageDraw
-import random
 from tqdm import tqdm
 from sam2.build_sam import build_sam2, build_sam2_video_predictor
 from sam2.sam2_image_predictor import SAM2ImagePredictor
@@ -11,7 +11,9 @@ from sam2.sam2_video_predictor import SAM2VideoPredictor
 import torch
 from collections import OrderedDict
 import matplotlib.pyplot as plt
-import cv2
+from sam2_handler import SAM2_Handler
+
+
 
 # ------------------------------|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
 # FUNCTIONS FROM SAM2 TO MODIFY IMAGE LOADING BEHAVIOR
@@ -143,23 +145,23 @@ def init_state(
 # ------------------------------|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
 # LOAD SAM2 MODEL & GLOBALS
 # ------------------------------|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
-print("Loading SAM2 model...")
-device = "cuda" if torch.cuda.is_available() else "cpu"
-checkpoint = "./checkpoints/sam2.1_hiera_large.pt"
-model_cfg = "configs/sam2.1/sam2.1_hiera_l.yaml"
+# print("Loading SAM2 model...")
+# device = "cuda" if torch.cuda.is_available() else "cpu"
+# checkpoint = "./checkpoints/sam2.1_hiera_large.pt"
+# model_cfg = "configs/sam2.1/sam2.1_hiera_l.yaml"
 # model = SAM2VideoPredictor.from_pretrained("facebook/sam2-hiera-large", device=device)
-model = build_sam2_video_predictor(model_cfg, checkpoint, device=device)
+# model = build_sam2_video_predictor(model_cfg, checkpoint, device=device)
 # model.clear_non_cond_mem_around_input = True
 # model.clear_non_cond_mem_for_multi_obj = True
-model.add_all_frames_to_correct_as_cond = True # [!!] Necessary for correcting frames
-print(f"clear_non_cond_mem_around_input: {model.clear_non_cond_mem_around_input}")
-print(f"add_all_frames_to_correct_as_cond: {model.add_all_frames_to_correct_as_cond}")
+# model.add_all_frames_to_correct_as_cond = True # [!!] Necessary for correcting frames
+# print(f"clear_non_cond_mem_around_input: {model.clear_non_cond_mem_around_input}")
 inference_state = None
 video_segments = {} # Stores propagated mask data
 original_image = None
-print("Model loaded on", device)
+# print("Model loaded on", device)
 
 frame_names = []
+# config = dict()
 LABEL_LIST = ["bar_12mm","bar_16mm","bar_4mm","bar_8mm",
 "conn_bnc","conn_dsub","conn_ethernet","conn_usb","conn_wp",
 "gear_large","gear_med","gear_small",
@@ -856,18 +858,24 @@ def build_ui(default_folder):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--data", type=str, default="/workspace/data/mini", help="Folder containing image sequence")
+    parser.add_argument("--config", type=str, default="/workspace/config/annotator_config.json", help="JSON config file")
     parser.add_argument("--port", type=int, default=7860)
     args = parser.parse_args()
 
+    # Load Json config 
+    print(f"Loading Config: {args.config}")
+    global config
+    with open(args.config, "r") as f:
+        config = json.load(f)
+    print(json.dumps(config, indent=4))
+
+    # Load SAM2 Model
+    sam2 = SAM2_Handler(config)
+    
+    exit()
     # sam2 = load_sam2_model(args.data)
     set_sam_video_folder(args.data)
 
-
-    # frame_idx = 0
-    # plt.figure(figsize=(9, 6))
-    # plt.title(f"frame {frame_idx}")
-    # plt.imshow(Image.open(os.path.join(args.data, frame_names[frame_idx])))
-    # plt.savefig("/workspace/data/test.png")
 
     demo = build_ui(args.data)
     # demo.update_folder(args.data)

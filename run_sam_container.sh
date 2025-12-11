@@ -12,7 +12,10 @@ LOCAL_SCRIPT_DIR=$(realpath ./scripts)
 LOCAL_CONFIG_DIR=$(realpath ./config)
 
 # Path to local data folder to mount into container for labelling
-LOCAL_DATA_DIR="/home/csrobot/Desktop/ATB1_BENCHMARK"
+# The first command line argument will be used instead of the default when provided
+DEFAULT_LOCAL_DATA_DIR="/home/csrobot/Desktop/ATB1_BENCHMARK"
+LOCAL_DATA_DIR="${1:-$DEFAULT_LOCAL_DATA_DIR}"
+echo "Local Data Directory: $LOCAL_DATA_DIR"
 
 xhost +local:docker
 
