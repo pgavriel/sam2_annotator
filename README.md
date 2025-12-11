@@ -1,1 +1,2 @@
-# sam2_annotator
+# sam2_annotator  
+A webapp interface to SAM2 for labelling batches of image data. SAM2 enables multi-label object masking, and tracking across subsequent video frames. Supports exporting masks, and YOLO style bounding box annotations. 
