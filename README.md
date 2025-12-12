@@ -1,5 +1,5 @@
-# sam2_annotator  
-A webapp interface to SAM2 for labelling batches of image data. SAM2 enables multi-label object masking, and tracking across subsequent video frames. Supports exporting masks, and YOLO style bounding box annotations.    
+# SAM2 Annotator WebApp  
+A webapp interface to SAM2 for labelling batches of image data. The tool runs inside a Docker container to avoid environment dependency issues, and the Dockerfile for building it is included here. SAM2 enables multi-label object masking, and tracking across subsequent video frames. Supports exporting masks, and YOLO style bounding box annotations.    
 ![Tool GUI Image](/img/gui.png "Tool GUI")  
 
 
