@@ -1,4 +1,4 @@
-# Dockerfile (GPU-enabled)
+# SAM2 Annotator Dockerfile (GPU-enabled)
 
 FROM nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04
 
@@ -27,6 +27,7 @@ RUN git clone https://github.com/facebookresearch/sam2.git
 # Change directory to the cloned repo
 WORKDIR /workspace/sam2
 
+# Download SAM2 Model checkpoints
 RUN cd checkpoints && ./download_ckpts.sh && cd ..
 
 # Upgrade pip and install Python requirements
@@ -35,12 +36,13 @@ RUN pip3 install --upgrade pip && pip3 install -e .
 # Install PyTorch with CUDA support (correct for CUDA 12.1)
 RUN pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
 
+# Install some additional packages
 RUN pip install opencv-python matplotlib 
-RUN apt-get update && apt-get install -y python3-tk
-RUN pip install watchdog
+
 # For annotator web app:
 RUN pip install gradio pillow
 
 WORKDIR /workspace
+
 # Default to bash terminal
 CMD ["/bin/bash"]

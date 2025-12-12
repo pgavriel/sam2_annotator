@@ -3,14 +3,33 @@ from sam2.sam2_image_predictor import SAM2ImagePredictor
 from sam2.sam2_video_predictor import SAM2VideoPredictor
 import os
 from os.path import join
-
 from collections import OrderedDict
-
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 from PIL import Image, ImageDraw
 import torch
 import numpy as np
+# ------------------------------|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
+# Wrapper functions for Gradio, the sam2_state needs to be used for all modifications
+# ------------------------------|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
+def w_reset_image_prompts(sam2, current_idx, image_paths):
+    image = sam2.reset_image_prompts(current_idx, image_paths)
+    return image, sam2
+
+def w_propagate_frames(sam2, current_idx, image_paths, n=None):
+    image = sam2.propagate_frames(current_idx,image_paths, n)
+    return image, sam2
+
+def w_reset_sam(sam2, current_idx, image_paths):
+    image, status, idx = sam2.reset_sam(current_idx,image_paths)
+    return image, status, idx, sam2
+
+def w_clear_inference_frames(sam2, current_idx, image_paths):
+    image, status, idx = sam2.clear_inference_frames(current_idx,image_paths)
+    return image, status, idx, sam2
+
+def w_inspect_inference_state(sam2):
+    sam2.inspect_inference_state()
 
 # ------------------------------|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
 # FUNCTIONS FROM SAM2 TO MODIFY IMAGE LOADING BEHAVIOR
@@ -56,16 +75,7 @@ def load_video_frames_from_scan(video_path,
     img_mean = torch.tensor(img_mean, dtype=torch.float32)[:, None, None]
     img_std = torch.tensor(img_std, dtype=torch.float32)[:, None, None]
 
-    # if async_loading_frames:
-    #     lazy_images = AsyncVideoFrameLoader(
-    #         img_paths,
-    #         image_size,
-    #         offload_video_to_cpu,
-    #         img_mean,
-    #         img_std,
-    #         compute_device,
-    #     )
-    #     return lazy_images, lazy_images.video_height, lazy_images.video_width
+    # NOTE: removed async_loading_frames from source
 
     images = torch.zeros(num_frames, 3, image_size, image_size, dtype=torch.float32)
     for n, img_path in enumerate(tqdm(img_paths, desc="frame loading (JPEG)")):
@@ -164,17 +174,20 @@ class SAM2_Handler:
         self.original_image = None
         self.frame_names = []
         self.labels = config_dict["object_labels"]
+        self.data_folder = None
 
         print("=== MODEL LOADED ===", device)
 
-    def set_sam_video_folder(self,frame_dir):
-        inference_state = init_state(self.model,video_path=frame_dir)
+
+    def set_video_folder(self,frame_dir):
+        self.inference_state = init_state(self.model,video_path=frame_dir)
         self.model.reset_state(self.inference_state)
         self.frame_names = [
             p for p in os.listdir(frame_dir)
             if os.path.splitext(p)[-1] in [".jpg", ".jpeg", ".JPG", ".JPEG"]
         ]
         self.frame_names.sort(key=lambda p: int(os.path.splitext(p)[0].split('_')[1]))
+        self.data_folder = frame_dir
 
     def reset_sam(self, current_idx, image_paths):
         # global model, inference_state, video_segments
@@ -184,9 +197,13 @@ class SAM2_Handler:
         print("SAM State Reset")
         return image, status, current_idx
 
+
     def reset_image_prompts(self, current_idx, image_paths):
-        # global inference_state, video_segments
+        ''' Remove all prompts from current image'''
+        print(f"\nResetting image prompts...")
+        print(f"Items: {len(self.inference_state['point_inputs_per_obj'].items())}")
         for obj_id, frames_dict in self.inference_state["point_inputs_per_obj"].items():
+            print(f"ID: {obj_id}, Frames: {frames_dict}")
             if current_idx in frames_dict.keys():
                 del frames_dict[current_idx]
                 print(f"Removed prompt for {self.inference_state['obj_idx_to_id'][obj_id]}")
@@ -195,12 +212,14 @@ class SAM2_Handler:
         image, status = self.load_image(current_idx, image_paths)
         return image
 
+
     def clear_inference_frames(self, current_idx, image_paths):
         # global inference_state, video_segments
         self.video_segments = {}
         image, status = self.load_image(current_idx, image_paths)
         print("Inference Frames Cleared")
         return image, status, current_idx
+
 
     def propagate_frames(self, current_idx, image_paths,n_frames=None):
         # global inference_state, video_segments, model
@@ -229,11 +248,10 @@ class SAM2_Handler:
 
         print(f"Vid Seg Keys: {self.video_segments.keys()}")
         print(f"Seg 0: {self.video_segments.get(0,None)}")
-
         image, status = self.load_image(current_idx, image_paths)
-
         print("Propagation Finished.")
         return image
+
 
     def inspect_inference_state(self):
         ''' Print out data inside current inference_state'''
@@ -247,6 +265,7 @@ class SAM2_Handler:
             else:
                 print(f"> [ {k} ]: Type: {type(v)}")
     
+
     def load_image(self, idx, image_paths):
         # global original_image
         if not image_paths:
@@ -262,6 +281,7 @@ class SAM2_Handler:
         status = f"Image {idx+1}/{len(image_paths)}: {os.path.basename(image_paths[idx])}"
         return overlay, status
     
+
     def overlay_masks(self, image, masks, alpha=0.75, verbose=True):
         '''
         Called when loading an image, gets masks from video_segments (only after propagating frames)
@@ -284,7 +304,6 @@ class SAM2_Handler:
             color = (np.array(cmap(obj_id / len(self.labels))[:3]) * 255).astype(np.uint8)
             overlay = Image.new("RGBA", base.size, tuple(color) + (int(alpha * 255),))
             mask_img = Image.fromarray((mask * 255).astype(np.uint8))#, mode="L")
-
             # Use alpha_composite correctly by premasking the overlay
             overlay.putalpha(mask_img.point(lambda p: p * alpha))
             base = Image.alpha_composite(base, overlay)
