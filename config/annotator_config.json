@@ -4,9 +4,7 @@
     "sam2_config": "configs/sam2.1/sam2.1_hiera_l.yaml",
 
     "data_folder": "/workspace/data/mini",
-    "frame_regex": "NOT YET IMPLEMENTED ^frame_[0-9]+\\.jpg$",
-    "start_frame": 0,
-    "end_frame": -1,
+    "frame_regex": "^frame_([0-9]+)\\.jpg$",
 
     "object_labels": [
         "object1",

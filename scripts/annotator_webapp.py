@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt
 from sam2_handler import SAM2_Handler
 import sam2_handler as s2h
 from data_export import *
+from utils import find_frames
 
 # ------------------------------|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
 # DRAW FUNCTIONS
@@ -114,21 +115,27 @@ def draw_points_on_image(sam2, image: Image.Image, current_idx, marker_radius=8)
 # ------------------------------|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
 # Image sequence management
 # ------------------------------|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
-def list_images(folder):
-    valid_exts = (".jpg", ".jpeg", ".png", ".bmp")
-    files = sorted([f for f in os.listdir(folder) if f.lower().endswith(valid_exts)])
-    return [os.path.join(folder, f) for f in files]
+# def list_images(folder):
+#     valid_exts = (".jpg", ".jpeg", ".png", ".bmp")
+#     files = sorted([f for f in os.listdir(folder) if f.lower().endswith(valid_exts)])
+#     return [os.path.join(folder, f) for f in files]
 
-def update_folder(sam2, folder):
+def get_frames(search_folder, search_regex):
+    frames, frame_range = find_frames(search_folder,search_regex)
+    minf, maxf = frame_range
+    status = f"Found {len(frames)} frames [{minf}-{maxf}]"
+    return status, minf, maxf
+
+def update_folder(sam2, folder, search_regex, min_frame, max_frame):
     if not os.path.isdir(folder):
         return None, "Invalid folder path.", [], 0
-    image_paths = list_images(folder)
+    # image_paths, frame_range= find_frames(folder,search_regex,min_frame,max_frame)
     # LOAD IMAGES INTO SAM
-    sam2.set_video_folder(folder)
+    image_paths, frame_range = sam2.set_video_folder(folder,search_regex,min_frame,max_frame)
     if not image_paths:
         return None, "No images found in folder.", [], 0
     image, status = sam2.load_image(0, image_paths)
-    return image, status, image_paths, 0
+    return image, status, image_paths, 0, frame_range[0], frame_range[1]
 
 def next_image(sam2, current_idx, image_paths):
     if not image_paths:
@@ -209,10 +216,18 @@ def handle_click(sam2, evt: gr.SelectData, image_paths, current_idx, label, clic
 def build_ui(sam2_handler):
     with gr.Blocks() as demo:
         with gr.Row():
-            gr.Markdown("## SAM2 Annotation Tool\nSelect a folder of images to load into SAM2, then click to add prompts.")
             with gr.Column():
-                folder_box = gr.Textbox(value=sam2_handler.data_folder, label="Image Folder Path (Local to docker container)")
-                select_btn = gr.Button("Load Folder")
+                gr.Markdown("## SAM2 Annotation Tool\nSelect a folder of images to load into SAM2, then click to add prompts.")
+            with gr.Column():
+                with gr.Row():
+                    folder_box = gr.Textbox(value=sam2_handler.data_folder, label="Frames Path (Local to Docker)") 
+                    regex_box = gr.Textbox(value=sam2_handler.frame_regex, label="Frame search regex")
+                search_btn = gr.Button("Find Frames")
+            with gr.Column():
+                with gr.Row():
+                    minrng_box = gr.Number(label="First Frame", value="0", interactive=True)
+                    maxrng_box = gr.Number(label="Last Frame", value="-1", interactive=True)
+                select_btn = gr.Button("Load Frames Into SAM2")
 
         output_image = gr.Image(label="Segmentation Overlay", show_label=False)
         with gr.Row():
@@ -268,9 +283,12 @@ def build_ui(sam2_handler):
         show_prompts_btn.click(draw_points_on_image, #
                         inputs=[sam2_state, output_image, current_idx_state],
                         outputs=[output_image])
-        select_btn.click(update_folder, #
-                        inputs=[sam2_state, folder_box], 
-                        outputs=[output_image, status_text, image_paths_state, current_idx_state])
+        search_btn.click(get_frames, # Search for frames in folder matching regex
+                        inputs=[folder_box, regex_box], 
+                        outputs=[status_text, minrng_box, maxrng_box])
+        select_btn.click(update_folder, # Load Frames within Range to SAM2
+                        inputs=[sam2_state, folder_box, regex_box, minrng_box, maxrng_box], 
+                        outputs=[output_image, status_text, image_paths_state, current_idx_state, minrng_box, maxrng_box])
         next_btn.click(next_image, #
                         inputs=[sam2_state, current_idx_state, image_paths_state],
                         outputs=[output_image, status_text, current_idx_state])
@@ -316,8 +334,8 @@ def build_ui(sam2_handler):
 
         # Auto-load folder if provided at launch
         demo.load(update_folder, 
-                inputs=[sam2_state, folder_box],
-                outputs=[output_image, status_text, image_paths_state, current_idx_state],
+                inputs=[sam2_state, folder_box, regex_box, minrng_box, maxrng_box], 
+                outputs=[output_image, status_text, image_paths_state, current_idx_state, minrng_box, maxrng_box],
                 trigger_mode="once")
 
     return demo
@@ -343,7 +361,7 @@ if __name__ == "__main__":
     # Load SAM2 Model
     sam2 = SAM2_Handler(config)
 
-    sam2.set_video_folder(config["data_folder"])
+    # sam2.set_video_folder(config["data_folder"],config["frame_regex"],0,-1)
     # exit()
     # sam2 = load_sam2_model(args.data)
 

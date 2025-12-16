@@ -9,6 +9,8 @@ from tqdm import tqdm
 from PIL import Image, ImageDraw
 import torch
 import numpy as np
+from utils import find_frames
+
 # ------------------------------|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
 # Wrapper functions for Gradio, the sam2_state needs to be used for all modifications
 # ------------------------------|||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
@@ -45,7 +47,7 @@ def _load_img_as_tensor(img_path, image_size):
     video_width, video_height = img_pil.size  # the original video size
     return img, video_height, video_width
 
-def load_video_frames_from_scan(video_path,
+def load_video_frames_from_scan(frame_list,
     image_size,
     offload_video_to_cpu,
     img_mean=(0.485, 0.456, 0.406),
@@ -53,32 +55,33 @@ def load_video_frames_from_scan(video_path,
     async_loading_frames=False,
     compute_device=torch.device("cuda")
     ):
-    '''Expects images named like {str}_{frame_num}.jpg'''
-    if isinstance(video_path, str) and os.path.isdir(video_path):
-        image_folder = video_path
-    else:
-        raise NotImplementedError("Video path is not a string and directory.")   
-    file_types = [".jpg", ".jpeg", ".JPG", ".JPEG"]
-    frame_names = [
-        p
-        for p in os.listdir(image_folder)
-        if os.path.splitext(p)[-1] in file_types
-    ]
-    frame_names.sort(key=lambda p: int(os.path.splitext(p)[0].split('_')[1]))
+    '''Expects frame_list to be a list of sorted full file paths to input frames'''
+    # '''Expects images named like {str}_{frame_num}.jpg'''
+    # if isinstance(video_path, str) and os.path.isdir(video_path):
+    #     image_folder = video_path
+    # else:
+    #     raise NotImplementedError("Video path is not a string and directory.")   
+    # file_types = [".jpg", ".jpeg", ".JPG", ".JPEG"]
+    # frame_names = [
+    #     p
+    #     for p in os.listdir(image_folder)
+    #     if os.path.splitext(p)[-1] in file_types
+    # ]
+    # frame_names.sort(key=lambda p: int(os.path.splitext(p)[0].split('_')[1]))
     
-    num_frames = len(frame_names)
+    num_frames = len(frame_list)
 
     print(f"Found {num_frames} frames.")
     if num_frames == 0:
-        raise RuntimeError(f"no {file_types} images found in {image_folder}")
-    img_paths = [os.path.join(image_folder, frame_name) for frame_name in frame_names]
+        raise RuntimeError(f"ERROR: No frames in list to load")
+    # img_paths = [os.path.join(image_folder, frame_name) for frame_name in frame_names]
     img_mean = torch.tensor(img_mean, dtype=torch.float32)[:, None, None]
     img_std = torch.tensor(img_std, dtype=torch.float32)[:, None, None]
 
-    # NOTE: removed async_loading_frames from source
+    # NOTE: removed async_loading_frames from source code
 
     images = torch.zeros(num_frames, 3, image_size, image_size, dtype=torch.float32)
-    for n, img_path in enumerate(tqdm(img_paths, desc="frame loading (JPEG)")):
+    for n, img_path in enumerate(tqdm(frame_list, desc="Loading Frames")):
         images[n], video_height, video_width = _load_img_as_tensor(img_path, image_size)
     if not offload_video_to_cpu:
         images = images.to(compute_device)
@@ -92,7 +95,7 @@ def load_video_frames_from_scan(video_path,
 @torch.inference_mode()
 def init_state(
     model,
-    video_path,
+    frame_paths,
     offload_video_to_cpu=False,
     offload_state_to_cpu=False,
     async_loading_frames=False,
@@ -100,7 +103,7 @@ def init_state(
     """Initialize an inference state."""
     compute_device = model.device  # device of the model
     images, video_height, video_width = load_video_frames_from_scan(
-        video_path=video_path,
+        frame_list=frame_paths,
         image_size=model.image_size,
         offload_video_to_cpu=offload_video_to_cpu,
         async_loading_frames=async_loading_frames,
@@ -173,21 +176,28 @@ class SAM2_Handler:
         self.video_segments = {} # Stores propagated mask data
         self.original_image = None
         self.frame_names = []
+        self.data_folder = config_dict["data_folder"]
+        self.frame_regex = config_dict["frame_regex"]
         self.labels = config_dict["object_labels"]
-        self.data_folder = None
 
         print("=== MODEL LOADED ===", device)
 
 
-    def set_video_folder(self,frame_dir):
-        self.inference_state = init_state(self.model,video_path=frame_dir)
+    def set_video_folder(self,frame_dir,search_regex,min_frame,max_frame):
+        image_paths, frame_range = find_frames(frame_dir,search_regex,min_frame,max_frame)
+        self.inference_state = init_state(self.model,frame_paths=image_paths)
         self.model.reset_state(self.inference_state)
-        self.frame_names = [
-            p for p in os.listdir(frame_dir)
-            if os.path.splitext(p)[-1] in [".jpg", ".jpeg", ".JPG", ".JPEG"]
-        ]
-        self.frame_names.sort(key=lambda p: int(os.path.splitext(p)[0].split('_')[1]))
+        # self.frame_names = [
+        #     p for p in os.listdir(frame_dir)
+        #     if os.path.splitext(p)[-1] in [".jpg", ".jpeg", ".JPG", ".JPEG"]
+        # ]
+        # self.frame_names.sort(key=lambda p: int(os.path.splitext(p)[0].split('_')[1]))
+        self.frame_names = [os.path.basename(p) for p in image_paths]
+        print(f"Frame names: {self.frame_names}")
         self.data_folder = frame_dir
+        self.reset_sam(0,image_paths)
+        return image_paths, frame_range
+
 
     def reset_sam(self, current_idx, image_paths):
         # global model, inference_state, video_segments
