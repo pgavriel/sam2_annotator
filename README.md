@@ -18,7 +18,8 @@ A webapp interface to SAM2 for labelling batches of image data. The tool runs in
 4. Open the address listed in the terminal in your web browser and you should see the annotator tool displayed.   
 
 ### Usage   
-* Using the controls at the top of the page, you can specify a new input folder of images to load while the app is running.   
+* Using the controls at the top of the page, you can specify a new input folder of images to load and specify the REGEX pattern to match when finding frames. The *Find Frames* button will simply search for frames, and update the *First Frame* and *Last Frame* input boxes based on the frames found. The REGEX pattern must have a group (bounded by parenthesis) to match the number of the frame, as this is used for sorting and filtering out frames.  
+* The *Load Frames into SAM2* button does exactly that, using the *Frames Path*, *Frame search regex*, *First Frame*, and *Last Frame*, it will find all the matching frames within the specified range and load them into the model for segmenting. If *Last Frame* is less than *First Frame* or greater than the highest frame number found, it will simply get all frame numbers above *First Frame*.     
 * Previous, Next, and Jump (to N) buttons allow you to step through the loaded images.   
 * Select the object you're currently labelling with the 'Select Label' dropdown.   
 * Left-Clicking on the image will add a positive prompt for the selected object. The 'negative prompt' checkbox will make it a negative prompt instead.   
